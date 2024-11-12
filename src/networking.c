@@ -78,8 +78,17 @@ void get_file_sha(const char* sourcefile, hashdata_t hash, int size)
  */
 void get_signature(char* password, char* salt, hashdata_t* hash)
 {
-    // Your code here. This function has been added as a guide, but feel free 
-    // to add more, or work in other parts of the code
+    char* passAndSalt = malloc(strlen(password) + strlen(salt)+ 1);
+    strcpy(passAndSalt, password);
+    strcat(passAndSalt, salt);
+    // Now passAndSalt contains both the pass and salt.
+    // Now we have to hash it:
+    SHA256_CTX PaS
+    sha256_init(&PaS)
+    sha256_update(&PaS,passAndSalt,strlen(passAndSalt));
+    free(passAndSalt);
+    hash = PaS;
+
 }
 
 /*
