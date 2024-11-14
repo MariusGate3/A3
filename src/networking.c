@@ -83,12 +83,11 @@ void get_signature(char* password, char* salt, hashdata_t* hash)
     strcat(passAndSalt, salt);
     // Now passAndSalt contains both the pass and salt.
     // Now we have to hash it:
-    SHA256_CTX PaS
-    sha256_init(&PaS)
+    SHA256_CTX PaS;
+    sha256_init(&PaS);
     sha256_update(&PaS,passAndSalt,strlen(passAndSalt));
+    sha256_final(&PaS, *hash);
     free(passAndSalt);
-    hash = PaS;
-
 }
 
 /*
@@ -97,8 +96,31 @@ void get_signature(char* password, char* salt, hashdata_t* hash)
  */
 void register_user(char* username, char* password, char* salt)
 {
-    // Your code here. This function has been added as a guide, but feel free 
-    // to add more, or work in other parts of the code
+    int clientfd = compsys_helper_open_clientfd(server_ip, server_port);
+    if (clientfd < 0) {
+        fprintf(stderr, "Error connecting to server at %s:%s\n", server_ip, server_port);
+        return;
+    }
+
+    Request_t request = {0};
+    strncpy(request.header.username, username, USERNAME_LEN);
+    request.header.length = htobe32(0);
+    get_signature(password, salt, &request.header.salted_and_hashed);
+
+    ssize_t request_size = sizeof(request.header);
+    if (compsys_helper_writen(clientfd, &request, request_size) < 0) {
+        perror("Error sending request to server");
+        close(clientfd);
+        return;
+    }
+
+    // Initialize buffered reading state
+    compsys_helper_state_t state;
+    compsys_helper_readinitb(&state, clientfd);
+
+    // Buffer for response
+    char response[RESPONSE_HEADER_LEN];
+    close(clientfd);
 }
 
 /*
@@ -106,11 +128,11 @@ void register_user(char* username, char* password, char* salt)
  * a file path. Note that this function should be able to deal with both small 
  * and large files. 
  */
-void get_file(char* username, char* password, char* salt, char* to_get)
-{
+//void get_file(char* username, char* password, char* salt, char* to_get)
+//{
     // Your code here. This function has been added as a guide, but feel free 
     // to add more, or work in other parts of the code
-}
+//}
 
 int main(int argc, char **argv)
 {
@@ -213,12 +235,12 @@ int main(int argc, char **argv)
     // Retrieve the smaller file, that doesn't not require support for blocks. 
     // As handed out, this line will run every time this client starts, and so 
     // should be removed if user interaction is added
-    get_file(username, password, user_salt, "tiny.txt");
+    //get_file(username, password, user_salt, "tiny.txt");
 
     // Retrieve the larger file, that requires support for blocked messages. As
     // handed out, this line will run every time this client starts, and so 
     // should be removed if user interaction is added
-    get_file(username, password, user_salt, "hamlet.txt");
+    //get_file(username, password, user_salt, "hamlet.txt");
 
     exit(EXIT_SUCCESS);
 }
