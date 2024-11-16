@@ -76,18 +76,26 @@ void get_file_sha(const char* sourcefile, hashdata_t hash, int size)
  * as handed out, this function is never called. You will need to decide where 
  * it is sensible to do so.
  */
-void get_signature(char* password, char* salt, hashdata_t* hash)
-{
-    char* passAndSalt = malloc(strlen(password) + strlen(salt)+ 1);
-    strcpy(passAndSalt, password);
-    strcat(passAndSalt, salt);
-    // Now passAndSalt contains both the pass and salt.
-    // Now we have to hash it:
-    SHA256_CTX PaS;
-    sha256_init(&PaS);
-    sha256_update(&PaS,passAndSalt,strlen(passAndSalt));
-    sha256_final(&PaS, *hash);
-    free(passAndSalt);
+void get_signature(const char* password, const char* salt, hashdata_t* hash) {
+    size_t password_len = strlen(password);
+    size_t salt_len = strlen(salt);
+    size_t combined_len = password_len + salt_len;
+
+    char* pass_and_salt = malloc(combined_len);
+    if (!pass_and_salt) {
+        fprintf(stderr, "[Client] Memory allocation failed\n");
+        exit(EXIT_FAILURE);
+    }
+
+    memcpy(pass_and_salt, password, password_len);
+    memcpy(pass_and_salt + password_len, salt, salt_len);
+
+    SHA256_CTX sha_ctx;
+    sha256_init(&sha_ctx);
+    sha256_update(&sha_ctx, pass_and_salt, combined_len);
+    sha256_final(&sha_ctx, *hash);
+
+    free(pass_and_salt);
 }
 
 /*
@@ -114,13 +122,51 @@ void register_user(char* username, char* password, char* salt)
         return;
     }
 
-    // Initialize buffered reading state
-    compsys_helper_state_t state;
-    compsys_helper_readinitb(&state, clientfd);
-
-    // Buffer for response
     char response[RESPONSE_HEADER_LEN];
-    close(clientfd);
+    if (compsys_helper_readn(clientfd, &response, RESPONSE_HEADER_LEN) < 0) {
+        fprintf(stderr, "Error reading the response\n");
+        close(clientfd);
+        return;
+    }
+
+    uint32_t response_length = ntohl(*(uint32_t*)&response[0]);
+    uint32_t status_code = ntohl(*(uint32_t*)&response[4]);
+    uint32_t block_number = ntohl(*(uint32_t*)&response[8]);
+    uint32_t block_count = ntohl(*(uint32_t*)&response[12]);
+    uint8_t* block_hash = (uint8_t*)&response[16];
+   // uint8_t* total_hash = (uint8_t*)&response[48];
+
+   switch (status_code)
+    {
+        case 1:
+            fprintf(stdout, "Response processed successfully. Status code: %d\n", status_code);
+            break;
+        case 2:
+            fprintf(stderr, "Error status code: %d, User already exists (could not register a user as they are already registered).\n", status_code);
+            close(clientfd);
+            return;
+        case 3:
+            fprintf(stderr, "Error status code: %d, User is not registered.\n", status_code);
+            close(clientfd);
+            return;
+        case 4:
+            fprintf(stderr, "Error status code: %d, Invalid login (username/signature mismatch).\n", status_code);
+            close(clientfd);
+            return;
+        case 5:
+            fprintf(stderr, "Error status code: %d, Bad request (file does not exist).\n", status_code);
+            close(clientfd);
+            return;
+        case 6:
+            fprintf(stderr, "Error status code: %d, An unspecified error occurred on the server.\n", status_code);
+            close(clientfd);
+            return;
+        case 7:
+            fprintf(stderr, "Error status code: %d, Malformed request (protocol mismatch).\n", status_code);
+            close(clientfd);
+            return;
+    }  
+
 }
 
 /*
@@ -160,8 +206,9 @@ void get_file(char* username, char* password, char* salt, char* to_get)
     uint32_t status_code = ntohl(*(uint32_t*)&response[4]);
     uint32_t block_number = ntohl(*(uint32_t*)&response[8]);
     uint32_t block_count = ntohl(*(uint32_t*)&response[12]);
-    uint8_t* block_hash = &response[16];
-    uint8_t* total_hash = &response[48];
+    uint8_t* block_hash = (uint8_t*)&response[16];
+   // uint8_t* total_hash = (uint8_t*)&response[48];
+    printf("Processing block %u out of %u\n", block_number, block_count);
     switch (status_code)
     {
         case 1:
@@ -193,8 +240,37 @@ void get_file(char* username, char* password, char* salt, char* to_get)
             return;
     }
 
-    
+    char *payload = malloc(response_length);
+    if (compsys_helper_readn(clientfd, payload, response_length) <= 0) {
+        fprintf(stderr, "Error reading the response\n");
+        close(clientfd);
+        free(payload);
+        return;
+    }
 
+    // Now we validate the payload with the the block hash.
+    hashdata_t hashed_payload = {0};
+    get_data_sha(payload, hashed_payload, response_length, SHA256_HASH_SIZE);
+
+    if(memcmp(hashed_payload, block_hash, SHA256_HASH_SIZE) != 0) {
+        fprintf(stderr, "Payload not valid.\n");
+        close(clientfd);
+        free(payload);
+        return;
+    }
+
+    FILE* pwrite = fopen(to_get, "wb");
+    if (fwrite(payload, 1, response_length, pwrite) != response_length) {
+        fprintf(stderr, "Error when writing file to disk");
+        fclose(pwrite);
+        free(payload);
+        close(clientfd);
+        return;
+    }
+    fclose(pwrite);
+    close(clientfd);
+    free(payload);
+    fprintf(stdout, "File was succesfully writen to disk.\n");
 }
 
 int main(int argc, char **argv)
@@ -273,14 +349,14 @@ int main(int argc, char **argv)
     // Note that a random salt should be used, but you may find it easier to
     // repeatedly test the same user credentials by using the hard coded value
     // below instead, and commenting out this randomly generating section.
-    for (int i=0; i<SALT_LEN; i++)
-    {
-        user_salt[i] = 'a' + (random() % 26);
-    }
-    user_salt[SALT_LEN] = '\0';
-    //strncpy(user_salt, 
-    //    "0123456789012345678901234567890123456789012345678901234567890123\0", 
-    //    SALT_LEN+1);
+    // for (int i=0; i<SALT_LEN; i++)
+    // {
+    //     user_salt[i] = 'a' + (random() % 26);
+    // }
+    // user_salt[SALT_LEN] = '\0';
+    strncpy(user_salt, 
+        "0123456789012345678901234567890123456789012345678901234567890123\0", 
+        SALT_LEN+1);
 
     fprintf(stdout, "Using salt: %s\n", user_salt);
 
@@ -298,12 +374,12 @@ int main(int argc, char **argv)
     // Retrieve the smaller file, that doesn't not require support for blocks. 
     // As handed out, this line will run every time this client starts, and so 
     // should be removed if user interaction is added
-    get_file(username, password, user_salt, "tiny.txt");
+    // get_file(username, password, user_salt, "tiny.txt");
 
     // Retrieve the larger file, that requires support for blocked messages. As
     // handed out, this line will run every time this client starts, and so 
     // should be removed if user interaction is added
-    get_file(username, password, user_salt, "hamlet.txt");
+    // get_file(username, password, user_salt, "hamlet.txt");
 
     exit(EXIT_SUCCESS);
 }
