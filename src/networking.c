@@ -369,12 +369,12 @@ int main(int argc, char **argv)
     // Register the given user. As handed out, this line will run every time 
     // this client starts, and so should be removed if user interaction is 
     // added
-    register_user(username, password, user_salt);
+    // register_user(username, password, user_salt);
 
     // Retrieve the smaller file, that doesn't not require support for blocks. 
     // As handed out, this line will run every time this client starts, and so 
     // should be removed if user interaction is added
-    // get_file(username, password, user_salt, "tiny.txt");
+    get_file(username, password, user_salt, "tiny.txt");
 
     // Retrieve the larger file, that requires support for blocked messages. As
     // handed out, this line will run every time this client starts, and so 
