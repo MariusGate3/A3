@@ -194,83 +194,89 @@ void get_file(char* username, char* password, char* salt, char* to_get)
         close(clientfd);
         return;
     }
-
-    char response[RESPONSE_HEADER_LEN];
-    if (compsys_helper_readn(clientfd, &response, RESPONSE_HEADER_LEN) < 0) {
-        fprintf(stderr, "Error reading the response\n");
-        close(clientfd);
-        return;
-    }
-
-    uint32_t response_length = ntohl(*(uint32_t*)&response[0]);
-    uint32_t status_code = ntohl(*(uint32_t*)&response[4]);
-    uint32_t block_number = ntohl(*(uint32_t*)&response[8]);
-    uint32_t block_count = ntohl(*(uint32_t*)&response[12]);
-    uint8_t* block_hash = (uint8_t*)&response[16];
-   // uint8_t* total_hash = (uint8_t*)&response[48];
-    printf("Processing block %u out of %u\n", block_number, block_count);
-    switch (status_code)
-    {
-        case 1:
-            fprintf(stdout, "Response processed successfully. Status code: %d\n", status_code);
-            break;
-        case 2:
-            fprintf(stderr, "Error status code: %d, User already exists (could not register a user as they are already registered).\n", status_code);
-            close(clientfd);
-            return;
-        case 3:
-            fprintf(stderr, "Error status code: %d, User is not registered.\n", status_code);
-            close(clientfd);
-            return;
-        case 4:
-            fprintf(stderr, "Error status code: %d, Invalid login (username/signature mismatch).\n", status_code);
-            close(clientfd);
-            return;
-        case 5:
-            fprintf(stderr, "Error status code: %d, Bad request (file does not exist).\n", status_code);
-            close(clientfd);
-            return;
-        case 6:
-            fprintf(stderr, "Error status code: %d, An unspecified error occurred on the server.\n", status_code);
-            close(clientfd);
-            return;
-        case 7:
-            fprintf(stderr, "Error status code: %d, Malformed request (protocol mismatch).\n", status_code);
-            close(clientfd);
-            return;
-    }
-
-    char *payload = malloc(response_length);
-    if (compsys_helper_readn(clientfd, payload, response_length) <= 0) {
-        fprintf(stderr, "Error reading the response\n");
-        close(clientfd);
-        free(payload);
-        return;
-    }
-
-    // Now we validate the payload with the the block hash.
-    hashdata_t hashed_payload = {0};
-    get_data_sha(payload, hashed_payload, response_length, SHA256_HASH_SIZE);
-
-    if(memcmp(hashed_payload, block_hash, SHA256_HASH_SIZE) != 0) {
-        fprintf(stderr, "Payload not valid.\n");
-        close(clientfd);
-        free(payload);
-        return;
-    }
+    
 
     FILE* pwrite = fopen(to_get, "wb");
-    if (fwrite(payload, 1, response_length, pwrite) != response_length) {
-        fprintf(stderr, "Error when writing file to disk");
-        fclose(pwrite);
+    uint32_t block_progress = 0;
+    uint32_t block_count = 2;
+
+    while (block_progress < block_count) {
+        block_progress++;
+        char response[RESPONSE_HEADER_LEN];
+        if (compsys_helper_readn(clientfd, response, RESPONSE_HEADER_LEN) <= 0) {
+            fprintf(stderr, "Error reading response header\n");
+            break;
+        }
+
+        uint32_t response_length = ntohl(*(uint32_t*)&response[0]);
+        uint32_t status_code = ntohl(*(uint32_t*)&response[4]);
+        uint32_t block_number = ntohl(*(uint32_t*)&response[8]);
+        block_count = ntohl(*(uint32_t*)&response[12]);
+        uint8_t* block_hash = (uint8_t*)&response[16];
+        uint8_t* total_hash = (uint8_t*)&response[48];
+        
+        printf("Processing block %u out of %u\n", block_number, block_count);
+        switch (status_code)
+        {
+            case 1:
+                fprintf(stdout, "Response processed successfully. Status code: %d\n", status_code);
+                break;
+            case 2:
+                fprintf(stderr, "Error status code: %d, User already exists (could not register a user as they are already registered).\n", status_code);
+                close(clientfd);
+                return;
+            case 3:
+                fprintf(stderr, "Error status code: %d, User is not registered.\n", status_code);
+                close(clientfd);
+                return;
+            case 4:
+                fprintf(stderr, "Error status code: %d, Invalid login (username/signature mismatch).\n", status_code);
+                close(clientfd);
+                return;
+            case 5:
+                fprintf(stderr, "Error status code: %d, Bad request (file does not exist).\n", status_code);
+                close(clientfd);
+                return;
+            case 6:
+                fprintf(stderr, "Error status code: %d, An unspecified error occurred on the server.\n", status_code);
+                close(clientfd);
+                return;
+            case 7:
+                fprintf(stderr, "Error status code: %d, Malformed request (protocol mismatch).\n", status_code);
+                close(clientfd);
+                return;
+        }
+        
+        char *payload = malloc(response_length);
+        if (compsys_helper_readn(clientfd, payload, response_length) <= 0) {
+            fprintf(stderr, "Error reading the response\n");
+            free(payload);
+            return;
+        }
+
+        // Now we validate the payload with the the block hash.
+        hashdata_t hashed_payload = {0};
+        get_data_sha(payload, hashed_payload, response_length, SHA256_HASH_SIZE);
+
+        if(memcmp(hashed_payload, block_hash, SHA256_HASH_SIZE) != 0) {
+            fprintf(stderr, "Payload not valid.\n");
+            close(clientfd);
+            free(payload);
+            return;
+        }
+
+        if (fwrite(payload, 1, response_length, pwrite) != response_length) {
+            fprintf(stderr, "Error when writing block to file");
+            free(payload);
+            close(clientfd);
+            break;
+        }
         free(payload);
-        close(clientfd);
-        return;
+        fprintf(stdout, "File was succesfully writen to disk.\n");
     }
     fclose(pwrite);
     close(clientfd);
-    free(payload);
-    fprintf(stdout, "File was succesfully writen to disk.\n");
+    
 }
 
 int main(int argc, char **argv)
@@ -379,7 +385,7 @@ int main(int argc, char **argv)
     // Retrieve the larger file, that requires support for blocked messages. As
     // handed out, this line will run every time this client starts, and so 
     // should be removed if user interaction is added
-    // get_file(username, password, user_salt, "hamlet.txt");
+    get_file(username, password, user_salt, "hamlet.txt");
 
     exit(EXIT_SUCCESS);
 }
