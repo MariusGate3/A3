@@ -128,11 +128,74 @@ void register_user(char* username, char* password, char* salt)
  * a file path. Note that this function should be able to deal with both small 
  * and large files. 
  */
-//void get_file(char* username, char* password, char* salt, char* to_get)
-//{
-    // Your code here. This function has been added as a guide, but feel free 
-    // to add more, or work in other parts of the code
-//}
+void get_file(char* username, char* password, char* salt, char* to_get)
+{
+    int clientfd = compsys_helper_open_clientfd(server_ip, server_port);
+
+    if (clientfd < 0) {
+        fprintf(stderr, "Error connecting to server at %s:%s\n", server_ip, server_port);
+        return;
+    }
+
+    Request_t request = {0};
+    strncpy(request.header.username, username, USERNAME_LEN);
+    request.header.length = htobe32(0);
+    get_signature(password, salt, &request.header.salted_and_hashed);
+    strncpy(request.payload, to_get, PATH_LEN);
+
+    if (compsys_helper_writen(clientfd, &request, (sizeof(request.header) + strlen(request.payload))) < 0) {
+        fprintf(stderr, "Error sending request to server\n");
+        close(clientfd);
+        return;
+    }
+
+    char response[RESPONSE_HEADER_LEN];
+    if (compsys_helper_readn(clientfd, &response, RESPONSE_HEADER_LEN) < 0) {
+        fprintf(stderr, "Error reading the response\n");
+        close(clientfd);
+        return;
+    }
+
+    uint32_t response_length = ntohl(*(uint32_t*)&response[0]);
+    uint32_t status_code = ntohl(*(uint32_t*)&response[4]);
+    uint32_t block_number = ntohl(*(uint32_t*)&response[8]);
+    uint32_t block_count = ntohl(*(uint32_t*)&response[12]);
+    uint8_t* block_hash = &response[16];
+    uint8_t* total_hash = &response[48];
+    switch (status_code)
+    {
+        case 1:
+            fprintf(stdout, "Response processed successfully. Status code: %d\n", status_code);
+            break;
+        case 2:
+            fprintf(stderr, "Error status code: %d, User already exists (could not register a user as they are already registered).\n", status_code);
+            close(clientfd);
+            return;
+        case 3:
+            fprintf(stderr, "Error status code: %d, User is not registered.\n", status_code);
+            close(clientfd);
+            return;
+        case 4:
+            fprintf(stderr, "Error status code: %d, Invalid login (username/signature mismatch).\n", status_code);
+            close(clientfd);
+            return;
+        case 5:
+            fprintf(stderr, "Error status code: %d, Bad request (file does not exist).\n", status_code);
+            close(clientfd);
+            return;
+        case 6:
+            fprintf(stderr, "Error status code: %d, An unspecified error occurred on the server.\n", status_code);
+            close(clientfd);
+            return;
+        case 7:
+            fprintf(stderr, "Error status code: %d, Malformed request (protocol mismatch).\n", status_code);
+            close(clientfd);
+            return;
+    }
+
+    
+
+}
 
 int main(int argc, char **argv)
 {
@@ -235,12 +298,12 @@ int main(int argc, char **argv)
     // Retrieve the smaller file, that doesn't not require support for blocks. 
     // As handed out, this line will run every time this client starts, and so 
     // should be removed if user interaction is added
-    //get_file(username, password, user_salt, "tiny.txt");
+    get_file(username, password, user_salt, "tiny.txt");
 
     // Retrieve the larger file, that requires support for blocked messages. As
     // handed out, this line will run every time this client starts, and so 
     // should be removed if user interaction is added
-    //get_file(username, password, user_salt, "hamlet.txt");
+    get_file(username, password, user_salt, "hamlet.txt");
 
     exit(EXIT_SUCCESS);
 }
