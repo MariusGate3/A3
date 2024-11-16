@@ -185,7 +185,7 @@ void get_file(char* username, char* password, char* salt, char* to_get)
 
     Request_t request = {0};
     strncpy(request.header.username, username, USERNAME_LEN);
-    request.header.length = htobe32(0);
+    request.header.length = htobe32(strlen(to_get));
     get_signature(password, salt, &request.header.salted_and_hashed);
     strncpy(request.payload, to_get, PATH_LEN);
 
@@ -369,7 +369,7 @@ int main(int argc, char **argv)
     // Register the given user. As handed out, this line will run every time 
     // this client starts, and so should be removed if user interaction is 
     // added
-    // register_user(username, password, user_salt);
+    register_user(username, password, user_salt);
 
     // Retrieve the smaller file, that doesn't not require support for blocks. 
     // As handed out, this line will run every time this client starts, and so 
