@@ -283,6 +283,100 @@ void get_file(char* username, char* password, char* salt, char* to_get)
     
 }
 
+void display_menu() {
+    printf("-------------------\n");
+    printf("1. Register a new user\n");
+    printf("2. Retrieve a file \n");
+    printf("3. Exit \n");
+    printf("--------------------\n");
+    printf("Enter your choice: ");
+}
+
+void handle_user_registration() {
+    char username[USERNAME_LEN];
+    char password[PASSWORD_LEN];
+    char user_salt[SALT_LEN+1];
+    fprintf(stdout, "Enter a username to proceed: ");
+    scanf("%16s", username);
+    while ((c = getchar()) != '\n' && c != EOF);
+    // Clean up username string as otherwise some extra chars can sneak in.
+    for (int i=strlen(username); i<USERNAME_LEN; i++)
+    {
+        username[i] = '\0';
+    }
+    
+    fprintf(stdout, "Enter your password to proceed: ");
+    scanf("%16s", password);
+    while ((c = getchar()) != '\n' && c != EOF);
+    // Clean up password string as otherwise some extra chars can sneak in.
+    for (int i=strlen(password); i<PASSWORD_LEN; i++)
+    {
+        password[i] = '\0';
+    }
+
+    // Note that a random salt should be used, but you may find it easier to
+    // repeatedly test the same user credentials by using the hard coded value
+    // below instead, and commenting out this randomly generating section.
+    // for (int i=0; i<SALT_LEN; i++)
+    // {
+    //     user_salt[i] = 'a' + (random() % 26);
+    // }
+    // user_salt[SALT_LEN] = '\0';
+    strncpy(user_salt, 
+        "0123456789012345678901234567890123456789012345678901234567890123\0", 
+        SALT_LEN+1);
+
+    fprintf(stdout, "Using salt: %s\n", user_salt);
+    register_user(username, password, user_salt);
+}
+
+void handle_get_file() {
+    char username[USERNAME_LEN];
+    char password[PASSWORD_LEN];
+    char user_salt[SALT_LEN+1];
+    char filepath[PATH_LEN];
+    fprintf(stdout, "Enter a username to proceed: ");
+    scanf("%16s", username);
+    while ((c = getchar()) != '\n' && c != EOF);
+    // Clean up username string as otherwise some extra chars can sneak in.
+    for (int i=strlen(username); i<USERNAME_LEN; i++)
+    {
+        username[i] = '\0';
+    }
+
+    fprintf(stdout, "Enter your password to proceed: ");
+    scanf("%16s", password);
+    while ((c = getchar()) != '\n' && c != EOF);
+    // Clean up password string as otherwise some extra chars can sneak in.
+    for (int i=strlen(password); i<PASSWORD_LEN; i++)
+    {
+        password[i] = '\0';
+    }
+
+    // Note that a random salt should be used, but you may find it easier to
+    // repeatedly test the same user credentials by using the hard coded value
+    // below instead, and commenting out this randomly generating section.
+    // for (int i=0; i<SALT_LEN; i++)
+    // {
+    //     user_salt[i] = 'a' + (random() % 26);
+    // }
+    // user_salt[SALT_LEN] = '\0';
+    strncpy(user_salt, 
+        "0123456789012345678901234567890123456789012345678901234567890123\0", 
+        SALT_LEN+1);
+
+    fprintf(stdout, "Using salt: %s\n", user_salt);
+    fprintf(stdout, "Enter a filepath to request: ");
+    scanf("%128s", filepath);
+    while ((c = getchar()) != '\n' && c != EOF);
+    // Clean up username string as otherwise some extra chars can sneak in.
+    for (int i=strlen(filepath); i<PATH_LEN; i++)
+    {
+        filepath[i] = '\0';
+    }
+    get_file(username, password, user_salt, filepath);
+}
+
 int main(int argc, char **argv)
 {
     // Users should call this script with a single argument describing what 
@@ -334,62 +428,29 @@ int main(int argc, char **argv)
     fprintf(stdout, "Client at: %s:%s\n", my_ip, my_port);
     fprintf(stdout, "Server at: %s:%s\n", server_ip, server_port);
 
-    char username[USERNAME_LEN];
-    char password[PASSWORD_LEN];
-    char user_salt[SALT_LEN+1];
-    
-    fprintf(stdout, "Enter a username to proceed: ");
-    scanf("%16s", username);
-    while ((c = getchar()) != '\n' && c != EOF);
-    // Clean up username string as otherwise some extra chars can sneak in.
-    for (int i=strlen(username); i<USERNAME_LEN; i++)
-    {
-        username[i] = '\0';
+    int choice;
+    while(1) {
+        display_menu();
+        if(scanf("%d", &choice) != 1) {
+            printf("Invalid input, please enter a value between 1 and 3.\n");
+            while(getchar() != '\n');
+            continue;
+        }
+        getchar();
+        switch(choice)
+        {
+            case 1:
+                handle_user_registration();
+                break;
+            case 2:
+                handle_get_file();
+                break;
+            case 3:
+                printf("Exiting program.\n");
+                exit(EXIT_SUCCESS);
+            default:
+                fprintf(stderr, "Invalid choice. Please enter a number between 1 and 3.\n");
+        }
     }
- 
-    fprintf(stdout, "Enter your password to proceed: ");
-    scanf("%16s", password);
-    while ((c = getchar()) != '\n' && c != EOF);
-    // Clean up password string as otherwise some extra chars can sneak in.
-    for (int i=strlen(password); i<PASSWORD_LEN; i++)
-    {
-        password[i] = '\0';
-    }
-
-    // Note that a random salt should be used, but you may find it easier to
-    // repeatedly test the same user credentials by using the hard coded value
-    // below instead, and commenting out this randomly generating section.
-    // for (int i=0; i<SALT_LEN; i++)
-    // {
-    //     user_salt[i] = 'a' + (random() % 26);
-    // }
-    // user_salt[SALT_LEN] = '\0';
-    strncpy(user_salt, 
-        "0123456789012345678901234567890123456789012345678901234567890123\0", 
-        SALT_LEN+1);
-
-    fprintf(stdout, "Using salt: %s\n", user_salt);
-
-    // The following function calls have been added as a structure to a 
-    // potential solution demonstrating the core functionality. Feel free to 
-    // add, remove or otherwise edit. Note that if you are creating a system 
-    // for user-interaction the following lines will almost certainly need to 
-    // be removed/altered.
-
-    // Register the given user. As handed out, this line will run every time 
-    // this client starts, and so should be removed if user interaction is 
-    // added
-    register_user(username, password, user_salt);
-
-    // Retrieve the smaller file, that doesn't not require support for blocks. 
-    // As handed out, this line will run every time this client starts, and so 
-    // should be removed if user interaction is added
-    get_file(username, password, user_salt, "tiny.txt");
-
-    // Retrieve the larger file, that requires support for blocked messages. As
-    // handed out, this line will run every time this client starts, and so 
-    // should be removed if user interaction is added
-    get_file(username, password, user_salt, "hamlet.txt");
-
     exit(EXIT_SUCCESS);
 }
