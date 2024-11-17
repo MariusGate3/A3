@@ -24,3 +24,9 @@ typedef struct Request {
     RequestHeader_t header;
     char payload[PATH_LEN];
 } Request_t;
+
+typedef struct Block {
+    uint32_t block_number;
+    uint32_t block_length;
+    char* payload;
+} Block_t;

@@ -129,12 +129,7 @@ void register_user(char* username, char* password, char* salt)
         return;
     }
 
-    uint32_t response_length = ntohl(*(uint32_t*)&response[0]);
     uint32_t status_code = ntohl(*(uint32_t*)&response[4]);
-    uint32_t block_number = ntohl(*(uint32_t*)&response[8]);
-    uint32_t block_count = ntohl(*(uint32_t*)&response[12]);
-    uint8_t* block_hash = (uint8_t*)&response[16];
-   // uint8_t* total_hash = (uint8_t*)&response[48];
 
    switch (status_code)
     {
@@ -199,6 +194,8 @@ void get_file(char* username, char* password, char* salt, char* to_get)
     FILE* pwrite = fopen(to_get, "wb");
     uint32_t block_progress = 0;
     uint32_t block_count = 2;
+    Block_t* blocks = NULL;
+
 
     while (block_progress < block_count) {
         block_progress++;
@@ -213,9 +210,12 @@ void get_file(char* username, char* password, char* salt, char* to_get)
         uint32_t block_number = ntohl(*(uint32_t*)&response[8]);
         block_count = ntohl(*(uint32_t*)&response[12]);
         uint8_t* block_hash = (uint8_t*)&response[16];
-        uint8_t* total_hash = (uint8_t*)&response[48];
-        
-        printf("Processing block %u out of %u\n", block_number, block_count);
+        // uint8_t* total_hash = (uint8_t*)&response[48];
+
+        if (blocks == NULL) {
+            blocks = calloc(block_count, sizeof(Block_t));
+        }
+
         switch (status_code)
         {
             case 1:
@@ -265,14 +265,18 @@ void get_file(char* username, char* password, char* salt, char* to_get)
             return;
         }
 
-        if (fwrite(payload, 1, response_length, pwrite) != response_length) {
+        blocks[block_number].block_length = response_length;
+        blocks[block_number].block_number = block_number;
+        blocks[block_number].payload = payload;
+    }
+
+    for (uint32_t i = 0; i < block_count; i++) {
+        printf("Processing block %u out of %u\n", blocks[i].block_number + 1, block_count);
+        if (fwrite(blocks[i].payload, 1, blocks[i].block_length, pwrite) != blocks[i].block_length) {
             fprintf(stderr, "Error when writing block to file");
-            free(payload);
-            close(clientfd);
+            free(blocks[i].payload);
             break;
         }
-        free(payload);
-        fprintf(stdout, "File was succesfully writen to disk.\n");
     }
     fclose(pwrite);
     close(clientfd);
