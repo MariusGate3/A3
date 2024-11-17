@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef __APPLE__
 #include "./endian.h"
@@ -13,6 +14,8 @@
 
 #include "./networking.h"
 #include "./sha256.h"
+
+#define SALT_FILE "user_salts.txt"
 
 char server_ip[IP_LEN];
 char server_port[PORT_LEN];
@@ -282,6 +285,46 @@ void get_file(char* username, char* password, char* salt, char* to_get)
     close(clientfd);
     
 }
+int get_user_salt(char* username, char* salt) {
+    FILE* file = fopen(SALT_FILE, "r"); 
+    if (file == NULL) {
+        printf("Error opening salt file: %s\n", SALT_FILE);
+        return 1;
+    }
+    char line[USERNAME_LEN+SALT_LEN+1];
+    while (fgets(line, sizeof(line), file)) {
+        // Split the line by ':' to separate the username and salt
+        char* file_username = strtok(line, ":");
+        char* file_salt = strtok(NULL, "\n");
+
+        if (file_username != NULL && file_salt != NULL && strcmp(file_username, username) == 0) {
+            strncpy(salt, file_salt, SALT_LEN);
+            salt[SALT_LEN] = '\0'; 
+            fclose(file);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+void save_user_salt(char* username, char* salt) {
+    FILE* file = fopen(SALT_FILE, "a"); 
+    if (file == NULL) {
+        printf("Error opening salt file");
+        return;
+    }
+
+    fprintf(file, "%s:%s\n", username, salt);
+    fclose(file);
+}
+
+void generate_random_salt(char* user_salt) {
+    srand(time(NULL));
+    for (int i = 0; i < SALT_LEN; i++) {
+        user_salt[i] = 'a' + (rand() % 26);
+    }
+    user_salt[SALT_LEN] = '\0'; 
+}
 
 void display_menu() {
     printf("-------------------\n");
@@ -313,22 +356,12 @@ void handle_user_registration() {
     {
         password[i] = '\0';
     }
-
-    // Note that a random salt should be used, but you may find it easier to
-    // repeatedly test the same user credentials by using the hard coded value
-    // below instead, and commenting out this randomly generating section.
-    // for (int i=0; i<SALT_LEN; i++)
-    // {
-    //     user_salt[i] = 'a' + (random() % 26);
-    // }
-    // user_salt[SALT_LEN] = '\0';
-    strncpy(user_salt, 
-        "0123456789012345678901234567890123456789012345678901234567890123\0", 
-        SALT_LEN+1);
-
+    generate_random_salt(user_salt);
+    save_user_salt(username, user_salt);
     fprintf(stdout, "Using salt: %s\n", user_salt);
     register_user(username, password, user_salt);
 }
+
 
 void handle_get_file() {
     char username[USERNAME_LEN];
@@ -353,19 +386,12 @@ void handle_get_file() {
         password[i] = '\0';
     }
 
-    // Note that a random salt should be used, but you may find it easier to
-    // repeatedly test the same user credentials by using the hard coded value
-    // below instead, and commenting out this randomly generating section.
-    // for (int i=0; i<SALT_LEN; i++)
-    // {
-    //     user_salt[i] = 'a' + (random() % 26);
-    // }
-    // user_salt[SALT_LEN] = '\0';
-    strncpy(user_salt, 
-        "0123456789012345678901234567890123456789012345678901234567890123\0", 
-        SALT_LEN+1);
-
-    fprintf(stdout, "Using salt: %s\n", user_salt);
+    if (get_user_salt(username, user_salt) == 0) {
+        printf("Found existing salt: %s\n", user_salt);
+    } else {
+        fprintf(stdout, "User must be registered to request files\n");
+        return;
+    }
     fprintf(stdout, "Enter a filepath to request: ");
     scanf("%128s", filepath);
     while ((c = getchar()) != '\n' && c != EOF);
